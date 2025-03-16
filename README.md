@@ -1,183 +1,193 @@
-# OpenPubkey
+# OpenPubkey SSH (OPKSSH)
 
-[![Go Coverage](https://github.com/openpubkey/openpubkey/wiki/coverage.svg)](https://raw.githack.com/wiki/openpubkey/openpubkey/coverage.html)
+opkssh is a tool which enables OpenID Connect to be used with ssh.
+It does not replace ssh, but rather generates ssh public keys that contain PK Tokens and configures sshd to verify the PK Token in the ssh public keys.
+PK Tokens are a backwards compatible extension of ID Tokens which contain a public key.
+For more details on PK Tokens see [OpenPubkey](https://github.com/openpubkey/openpubkey/blob/main/README.md)
 
-## Overview
-
-OpenPubkey is a protocol for leveraging OpenID Providers (OPs) to bind identities to public keys. It adds user- or workload-generated public keys to [OpenID Connect (OIDC)](https://openid.net/developers/how-connect-works/), enabling identities to sign messages or artifacts under their OIDC identity.
-
-We represent this binding as a PK Token. This token proves control of the OIDC identity and the associated private key at a specific time, as long as a verifier trusts the OP. Put another way, the PK Token provides the same assurances as a certificate issued by a Certificate Authority (CA) but critically, does not require adding a CA. Instead, the OP fulfills the role of the CA. This token can be distributed alongside signatures in the same way as a certificate.
-
-OpenPubkey does not add any new trusted parties beyond what is required for OpenID Connect. It is fully compatible with existing OpenID Providers (Google, Azure/Microsoft, Okta, OneLogin, Keycloak) without any changes to the OpenID Provider.
-
-Companies building on OpenPubkey include:
-
-* [Docker, Inc](https://www.docker.com/) is building a public container registry where [OpenPubkey is used to sign Docker Official Images](https://www.docker.com/blog/signing-docker-official-images-using-openpubkey/).
-
-* [BastionZero](https://www.bastionzero.com/) uses OpenPubkey to provide secure remote access to infrastructure.
-
-OpenPubkey is a Linux Foundation project. It is open source and licensed under the Apache 2.0 license. This project presently provides an OpenPubkey client and verifier for creating and verifying PK Tokens from Google’s OP (for users) and GitHub’s OP (for workloads).
+Currently opkssh supports Google, Microsoft/Azure and Gitlab. If you have a gmail, microsoft or a gitlab account you can ssh with that account.
 
 ## Getting Started
 
-Let's walk through a simple message signing example. For conciseness we omit the error handling code. The full code for this example can be found in [./examples/simple/example.go](./examples/simple/example.go).
+To configure a linux server to use opkssh simply run (root level privileges):
 
-We start by configuring the OP (OpenID Provider) our client and verifier will use. In this example we use Google as our OP.
-
-```golang
-opOptions := providers.GetDefaultGoogleOpOptions()
-opOptions.GQSign = signGQ
-op := providers.NewGoogleOpWithOptions(opOptions)
+```bash
+wget -qO- "https://raw.githubusercontent.com/openpubkey/openpubkey/main/opkssh/scripts/install-linux.sh" | sudo bash
 ```
 
-Next we create the OpenPubkey client and call `opkClient.Auth`:
+ This will download the opkssh binary, install it as `/usr/local/bin/opkssh`, and then configure ssh to use opkssh as an additional authentication mechanism.
 
-```golang
-opkClient, err := client.New(op)
-pkt, err := opkClient.Auth(context.Background())
+To allow a user, `alice@gmail.com`, to ssh to your server as `root`, run:
+
+```bash
+sudo opkssh add root alice@gmail.com google
 ```
 
-The function `opkClient.Auth` opens a browser window to the OP, Google in this case, which then prompts the user to authenticate their identity. If the user authenticates successfully the client will generate and return a PK Token, `pkt`.
+To ssh, Alice first needs to download the opkssh binary:
 
-The PK Token, `pkt`, along with the client's signing key can then be used to sign messages:
+|           | Download URL |
+|-----------|--------------|
+|🐧 Linux   | [github.com/openpubkey/openpubkey/releases/latest/download/opkssh-linux-amd64](https://github.com/openpubkey/openpubkey/releases/latest/download/opkssh-linux-amd64) |
+|🍎 OSX   | [github.com/openpubkey/openpubkey/releases/latest/download/opkssh-osx-amd64](https://github.com/openpubkey/openpubkey/releases/latest/download/opkssh-osx-amd64) |
+| ⊞ Win   | [github.com/openpubkey/openpubkey/releases/latest/download/opkssh-windows-amd64.exe](https://github.com/openpubkey/openpubkey/releases/latest/download/opkssh-windows-amd64.exe) |
 
-```golang
-msg := []byte("All is discovered - flee at once")
-signedMsg, err := pkt.NewSignedMessage(msg, opkClient.GetSigner())
+On OSX she can install opkssh by running:
+
+```bash
+curl -L https://github.com/openpubkey/openpubkey/releases/latest/download/opkssh-osx-amd64 -o opkssh; chmod +x opkssh
 ```
 
-To verify a signed message, we first verify that the PK Token `pkt` is issued by the OP (Google). Then we use the PK Token to verify the signed message.
+On her local computer Alice runs:
 
-```golang
-pktVerifier, err := verifier.New(provider)
-err = pktVerifier.VerifyPKToken(context.Background(), pkt)
-msg, err := pkt.VerifySignedMessage(signedMsg)
+```bash
+opkssh login
 ```
 
-To run this example type: `go run .\examples\simple\example.go`.
+which opens a browser window to authenticate to google and then generate an SSH public key in `~/.ssh/id_dsaKeys`.
 
-This will open a browser window to Google. If you authenticate to Google successfully, you should see: `Verification successful: anon.author.aardvark@gmail.com (https://accounts.google.com) signed the message 'All is discovered - flee at once'` where `anon.author.aardvark@gmail.com` is your gmail address.
+She can SSH as normal:
 
-## How Does OpenPubkey Work?
-
-OpenPubkey supports both workload identities and user identities. Let's look at how this works for users and then show how to extend OpenPubkey to workloads.
-
-### OpenPubkey and User Identities
-
-In OpenID Connect (OIDC) users authenticate to an OP (OpenID Provider), and the OP grants the user an ID Token. These ID Tokens are signed by the OP and contain claims made by the OP about the user such as the user's email address. Important to OpenPubkey is the `nonce` claim in the ID Token.
-
-The `nonce` claim in the ID Token is a random value sent to the OP by the user's client during authentication with the OP. OpenPubkey follows the OpenID Connect authentication protocol with the OP, but it transmits a `nonce` value set to the cryptographic hash of both the user's public key and a random value so that the `nonce` is still cryptographically random, but any party that speaks OpenPubkey can check that ID Token contains the user's public key. From the perspective of the OP, the `nonce` looks just like a random value.
-
-Let's look at an example where a user, Alice, leverages OpenPubkey to get her OpenID Provider, `google.com`, to bind her OIDC identity, `alice@acme.co`, to her public key `alice-pubkey`. To do this, Alice invokes her OpenPubkey client.
-
-1. Alice's OpenPubkey client generates a fresh key pair for Alice, (`alice-pubkey`, `alice-signkey`), and a random value `rz`. The client then computes the `nonce=crypto.SHA3_256(upk=alice-pubkey, alg=ES256, rz=crypto.Rand())`. The value `alg` is set to the algorithm of Alice's key pair.
-2. Alice's OpenPubkey client then initiates OIDC authentication flow with the OP, `google.com`, and sends the `nonce` to the OP.
-3. The OP requests that Alice consents to issuing an ID Token and provides credentials (i.e., username and password) to authenticate to her OP (`Google`).
-4. If Alice successfully authenticates, the OP builds an ID Token containing claims about Alice. Critically, this ID Token contains the `nonce` claim generated by Alice's client to commit to Alice's public key. The OP then signs this ID Token under its signing key and sends the ID Token to Alice.
-
-The ID Token is a JSON Web Signature (JWS) and follows the structure shown below:
-
-```
-payload: {
-  "iss": "https://accounts.google.com",
-  "aud": "878305696756-6maur39hl2psmk23imilg8af815ih9oi.apps.googleusercontent.com",
-  "sub": "123456789010",
-  "email": "alice@acme.co",
-  "nonce": 'crypto.SHA3_256(upk=alice-pubkey, alg=ES256, rz=crypto.Rand(), typ="CIC")',
-  "name": "Alice Example",
-  ...
-} 
-signatures: [
-  {"protected": {"alg": "RS256", "kid": "1234...", "typ": "JWT"},
-  "signature": SIGN(google-signkey, (payload, signatures[0].protected))`
-  },
-]
+```bash
+ssh root@server.example.com
 ```
 
-At this point, Alice has an ID Token, signed by `google.com` (the OP). Anyone can download the OP's (`google.com`) public keys from `google.com`'s well-known JSON Web Key Set (JWKS) URI )[www.googleapis.com/oauth2/v3/cert](https://www.googleapis.com/oauth2/v3/cert)) and verify that this ID Token committing to Alice's public key was actually signed by `google.com`. If Alice reveals the values of `alice-pubkey`, `alg`, and `rz`, anyone can verify that the `nonce` in the ID Token is the hash of  `upk=alice-pubkey, alg=ES256, rz=crypto.Rand()`. Thus, Alice now has a ID Token signed by Google that cryptography binding her identity, `alice@acme.co`, to her public key, `alice-pubkey`.
+This works because SSH will send the public key opkssh wrote in `~/.ssh/id_dsaKey` to the server and sshd running on the server will send the public key to opkssh to verify.
 
-### PK Tokens
+## How it works
 
-A PK Token is simply an extension of the ID Token that bundles together the ID Token with values committed to in the ID Token `nonce`. Because ID Tokens are JSON Web Signatures (JWS) and a JWS can have more than one signature, we extend the ID Token into a PK Token by appending a second signature/protected header.
+We use two features of SSH to make this work.
+First we leverage the fact that SSH public keys can be SSH certificates and SSH Certificates support arbitrary extensions.
+This allows us to smuggle your PK Token, which includes your ID Token, into the SSH authentication protocol via an extension field of the SSH certificate.
+Second, we use the `AuthorizedKeysCommand` configuration option in `sshd_config` (see [sshd_config manpage](https://man.openbsd.org/sshd_config.5#AuthorizedKeysCommand)) so that the SSH server will send the SSH certificate to an installed program that knows how to verify PK Tokens.
 
-Alice simply sets the values she committed to in the `nonce` as a JWS protected header and signs the ID Token payload and this protected header under her signing key, `alice-signkey`. This signature acts as cryptographic proof that the user knows the secret signing key corresponding to the public key.
+## What is supported
 
-Notice the additional signature entry in the PK Token example below (as compared to the ID Token example above):
+### Client support
 
+| OS               | Supported | Tested | Version Tested         | Possible Future Support |
+| --------        | --------      | ------- | ---------------------- |----------- |
+| Linux       | ✅             |  ✅     |  Ubuntu 24.04.1 LTS  | -  |
+| OSX       | ✅             |  ✅     |  -  | -  |
+| Windows11 | ✅            |   ✅     |  -  | -  |
+
+### Server support
+
+| OS               | Supported | Tested | Version Tested         | Possible Future Support |
+| --------        | --------      | ------- | ---------------------- |----------- |
+| Linux       | ✅             |  ✅     |  Ubuntu 24.04.1 LTS  | -  |
+| OSX       | ❌             |  ❌     |  -  | Likely  |
+| Windows11 | ❌            |   ❌     |  -                              | Likely |
+
+## Configuration
+
+All opkssh configuration files are space delimited and live on the server.
+We currently have no configuration files on the client.
+
+### `/etc/opk/providers`
+
+`/etc/opk/providers` contains a list of allowed OPs (OpenID Providers), a.k.a. IDPs.
+This file functions as an access control list that enables admins to determine the OpenID Providers and Client IDs they wish to rely on.
+
+- Column 1: Issuer URI of the OP
+- Column 2: Client-ID, the audience claim in the ID Token
+- Column 3: Expiration policy, options are:
+  - `24h` - user's ssh public key expires after 24 hours,
+  - `48h` - user's ssh public key expires after 24 hours,
+  - `1week` - user's ssh public key expires after 24 hours,
+  - `oidc` - user's ssh public key expires when the ID Token expires
+  - `oidc-refreshed` - user's ssh public key expires when their refreshed ID Token expires.
+
+By default we use `24h` as it requires that the user authenticate to their OP once a day. Most OPs expire ID Tokens every one to two hours, so if `oidc` the user will have to sign multiple times a day. `oidc-refreshed` is supported but complex and not currently recommended unless you know what you are doing.
+
+The default values for `/etc/opk/providers` are:
+
+```bash
+# Issuer Client-ID expiration-policy 
+https://accounts.google.com 411517154569-7f10v0ftgp5elms1q8fm7avtp33t7i7n.apps.googleusercontent.com 24h
+https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0 096ce0a3-5e72-4da8-9c86-12924b294a01 24h
 ```
-"payload": {
-  "iss": "https://accounts.google.com",
-  "aud": "878305696756-6maur39hl2psmk23imilg8af815ih9oi.apps.googleusercontent.com",
-  "sub": "123456789010",
-  "email": "alice@acme.co",
-  "nonce": <crypto.SHA3_256(upk=alice-pubkey, alg=ES256, rz=crypto.Rand(), typ="CIC")>,
-  "name": "Alice Example",
-  ...
-}
-"signatures": [
-  {"protected": {"alg": "RS256", "kid": "1234...", "typ": "JWT"},
-  "signature": <SIGN(google-signkey, (payload, signatures[0].protected))>
-  },
-  {"protected": {"upk": alice-pubkey, "alg": "EC256", "rz": crypto.Rand(), "typ": "CIC"},
-  "signature": <SIGN(alice-signkey, (payload, signatures[1].protected))>
-  },
-]
+
+`/etc/opk/providers` requires the following permissions (by default we create all configuration files with the correct permissions):
+
+```bash
+sudo chown root:opksshuser /etc/opk/providers
+sudo chmod 640 /etc/opk/providers
 ```
 
-The PK Token can be presented to an OpenPubkey verifier, which uses OIDC to obtain the OP’s public key and verify the OP's signature in the ID Token. It then use the values in the protected header to extract the user's public key.
+## `/etc/opk/auth_id`
 
-### OpenPubkey and Workload Identities
+`/etc/opk/auth_id` is the global authorized identities file.
+This is a server wide file where policies can be configured to determine which identities can assume what linux user accounts.
+Linux user accounts are typically referred to in SSH as *principals* and we continue the use of this terminology.
 
-Just like OpenID Connect, OpenPubkey supports both user identities and workload identities.
+- Column 1: The principal, i.e., the account the user wants to assume
+- Column 2: Email address or subject ID of the user (choose one)
+  - Email - the email of the identity
+  - Subject ID - an unique ID for the user set by the OP. This is the `sub` claim in the ID Token.
+- Column 3: Issuer URI
 
-The workload identity setting is very similar to the user identity setting with one major difference. Workload OpenID Providers, such as `github.com`, do not include a `nonce` claim in the ID Token. Unlike user identity providers, they allow the workload to specify an `aud`(audience) claim. Thus workload identity functions in a similar fashion as user identity but rather than commit to the public key in the `nonce`, we use the `aud` claim instead.
+```bash
+# email/sub principal issuer 
+alice alice@example.com https://accounts.google.com
+guest alice@example.com https://accounts.google.com 
+root alice@example.com https://accounts.google.com 
+dev bob@microsoft.com https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0
+```
 
-### GQ Signatures To Prevent Replay Attacks
+To add new rule run:
 
-Although not present in the original [OpenPubkey paper](https://eprint.iacr.org/2023/296), GQ signatures have now been integrated so that the OpenID Provider's (OP) signature can be stripped from the ID Token and a proof of the OP's signature published in its place. This prevents the ID Token within the PK Token from being used against any OIDC resource providers as the original signature has been removed without compromising any of the assurances that the original OP's signature provided.
+`sudo opkssh add {USER} {EMAIL} {ISSUER}`
 
-We follow the approach specified in the following paper: [Reducing Trust in Automated Certificate Authorities via Proofs-of-Authentication](https://arxiv.org/abs/2307.08201).
+These `auth_id` files can be edited by hand or you can use the add command to add new policies.
+For convenience you can use the shorthand `google` or `azure` rather than specifying the entire issuer.
+This is especially useful in the case of azure where the issuer contains a long and hard to remember random string. For instance:
 
-For user-identity scenarios where the PK Token is not made public, GQ signatures are not required. GQ Signatures are required for all current workload-identity use cases.
+`sudo opkssh add dev bob@microsoft.com azure`
 
-## How To Use OpenPubkey
+`/etc/opk/auth_id` requires the following permissions (by default we create all configuration files with the correct permissions):
 
-OpenPubkey is driven by its use cases. You can find all available use cases in the [examples folder](./examples/).
+```bash
+sudo chown root:opksshuser /etc/opk/auth_id
+sudo chmod 640 /etc/opk/auth_id
+```
 
-We expect this list to continue growing (and if you have an idea for an additional use case, please [file an issue](#file-an-issue), raise the idea in a [community meeting](#get-involved-with-our-community), or send a message in our [Slack channel](#join-our-slack)!
+### `~/.opk/auth_id`
 
-## How To Develop With OpenPubkey
+This is a local version of the auth_id file.
+It lives in the user's home directory (`/home/{USER}/.opk/auth_id`) and allows users to add or remove authorized identities without requiring root level permissions.
 
-As we work to get this repository ready for `v 1.0`, you can check out the [examples folder](./examples/) for more information about OpenPubkey's different use cases. In the meantime, we would love for the community to contribute more use cases. See [below](#get-involved-with-our-community) for guidance on joining our community.
+It can only be used for user/principal whose home directory it lives in.
+That is, if it is in `/home/alice/.opk/auth_id` it can only specify who can assume the principal `alice` on the server.
 
-## Governance and Contributing
+```bash
+# email/sub principal issuer 
+alice alice@example.com https://accounts.google.com
+```
 
-### File An Issue
+It requires the following permissions:
 
-For feature requests, bug reports, technical questions and requests, please open an issue. We ask that you review [existing issues](https://github.com/openpubkey/openpubkey/issues) before filing a new one to ensure your issue has not already been addressed.
+```bash
+chown {USER}:{USER} /home/{USER}/.opk/auth_id
+chmod 600 /home/{USER}/.opk/auth_id
+```
 
-If you have found what you believe to be a security vulnerability, *DO NOT file an issue*. Instead, please follow our [security disclosure policy](./SECURITY.md).
+### AuthorizedKeysCommandUser
 
-### Code of Conduct
+As recommended we use a low privileged user for the SSH AuthorizedKeysCommandUser.
+Our install script creates this user and group automatically by running:
 
-Before contributing to OpenPubkey, please review our [Code of Conduct](./CODE-OF-CONDUCT.md).
+```bash
+sudo groupadd --system opksshuser
+sudo useradd -r -M -s /sbin/nologin -g opksshuser opksshuser
+```
 
-### Contribute To OpenPubkey
+We then add the following lines to `/etc/ssh/sshd_config`
 
-To learn more about how to contribute, see [CONTRIBUTING.md](./CONTRIBUTING.md).
+```bash
+AuthorizedKeysCommand /usr/local/bin/opkssh verify %u %k %t
+AuthorizedKeysCommandUser opksshuser
+```
 
-### Get Involved With Our Community
+## More information
 
-To get involved with our community, see our [community repo](https://github.com/openpubkey/community/). You’ll find details such as when the next community and technical steering committee meetings are.
-
-### Join Our Slack
-
-Find us over on the [OpenSSF Slack](https://openssf.org/getinvolved/) in the `#openpubkey` channel.
-
-### Report A Security Issue
-
-To report a security issue, please follow our [security disclosure policy](./SECURITY.md).
-
-## FAQ
-
-See the [FAQ](./docs/FAQ.md) for answers to Frequently Asked Questions about OpenPubkey.
+We document how to manually install opkssh [here](https://raw.githubusercontent.com/openpubkey/openpubkey/main/opkssh/scripts/installing.md).

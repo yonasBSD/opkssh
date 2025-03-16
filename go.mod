@@ -1,17 +1,13 @@
-module github.com/openpubkey/openpubkey
+module github.com/openpubkey/opkssh
 
 go 1.23.7
 
 require (
-	filippo.io/bigmod v0.0.3
-	github.com/awnumar/memguard v0.22.3
 	github.com/docker/go-connections v0.5.0
-	github.com/go-webauthn/webauthn v0.8.6
-	github.com/google/uuid v1.6.0
 	github.com/jeremija/gosubmit v0.2.7
 	github.com/lestrrat-go/jwx/v2 v2.0.21
 	github.com/melbahja/goph v1.4.0
-	github.com/sirupsen/logrus v1.9.3
+	github.com/openpubkey/openpubkey v0.6.0
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.35.0
 	github.com/zitadel/oidc/v3 v3.23.2
@@ -20,8 +16,10 @@ require (
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
+	filippo.io/bigmod v0.0.3 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/awnumar/memguard v0.22.3 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
 	github.com/containerd/containerd v1.7.18 // indirect
@@ -38,10 +36,10 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/kr/fs v0.1.0 // indirect
-	github.com/kr/text v0.2.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
@@ -59,6 +57,7 @@ require (
 	github.com/rs/cors v1.11.0 // indirect
 	github.com/shirou/gopsutil/v3 v3.23.12 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
+	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
@@ -75,22 +74,16 @@ require (
 	github.com/awnumar/memcall v0.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
-	github.com/fxamacker/cbor/v2 v2.4.0 // indirect
-	github.com/go-webauthn/x v0.1.4 // indirect
-	github.com/goccy/go-json v0.10.2
-	github.com/golang-jwt/jwt/v5 v5.0.0 // indirect
-	github.com/google/go-tpm v0.9.0 // indirect
+	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.2 // indirect
 	github.com/lestrrat-go/httpcc v1.0.1 // indirect
 	github.com/lestrrat-go/httprc v1.0.5 // indirect
 	github.com/lestrrat-go/iter v1.0.2 // indirect
 	github.com/lestrrat-go/option v1.0.1 // indirect
-	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/spf13/afero v1.12.0
-	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
 	golang.org/x/oauth2 v0.25.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect

@@ -32,10 +32,10 @@ import (
 	"syscall"
 
 	"github.com/openpubkey/openpubkey/client/choosers"
-	"github.com/openpubkey/openpubkey/opkssh/commands"
-	"github.com/openpubkey/openpubkey/opkssh/policy"
-	"github.com/openpubkey/openpubkey/opkssh/policy/files"
 	"github.com/openpubkey/openpubkey/providers"
+	"github.com/openpubkey/opkssh/commands"
+	"github.com/openpubkey/opkssh/policy"
+	"github.com/openpubkey/opkssh/policy/files"
 )
 
 var (
