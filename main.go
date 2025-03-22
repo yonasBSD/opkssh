@@ -69,14 +69,16 @@ func run() int {
 		cancel()
 	}()
 
-	var providerFromEnv providers.OpenIdProvider
+	var providerFromLdFlags providers.OpenIdProvider
+
+	// If LDFlags issuer is set, use it to create a provider
 	if issuer != "" {
 		opts := providers.GetDefaultGoogleOpOptions() // TODO: Create default google like provider
 		opts.Issuer = issuer
 		opts.ClientID = clientID
 		opts.ClientSecret = clientSecret
 		opts.RedirectURIs = strings.Split(redirectURIs, ",")
-		providerFromEnv = providers.NewGoogleOpWithOptions(opts)
+		providerFromLdFlags = providers.NewGoogleOpWithOptions(opts)
 	}
 
 	switch command {
@@ -84,8 +86,10 @@ func run() int {
 		loginCmd := flag.NewFlagSet("login", flag.ExitOnError)
 		autoRefresh := loginCmd.Bool("auto-refresh", false, "Used to specify whether login will begin a process that auto-refreshes PK token")
 		logFilePath := loginCmd.String("log-dir", "", "Specify which directory the output log is placed")
+		providerArg := loginCmd.String("provider", "", "Specify the issuer and client ID to use for OpenID Connect provider. Format is: <issuer>,<client_id> or <issuer>,<client_id>,<client_secret>")
+
 		if err := loginCmd.Parse(os.Args[2:]); err != nil {
-			log.Println("ERROR parsing args:", err)
+			fmt.Println("ERROR parsing args:", err)
 			return 1
 		}
 
@@ -99,11 +103,68 @@ func run() int {
 				log.SetOutput(multiWriter)
 				log.Printf("Failed to open log for writing: %v \n", err)
 			}
+		} else {
+			log.SetOutput(os.Stdout)
 		}
 
+		// If the user has supplied commandline arguments for the provider, use those instead of the web chooser
 		var provider providers.OpenIdProvider
-		if providerFromEnv != nil {
-			provider = providerFromEnv
+		if providerArg != nil && *providerArg != "" {
+			parts := strings.Split(*providerArg, ",")
+			if len(parts) != 2 && len(parts) != 3 {
+				log.Println("ERROR Invalid provider argument format. Expected format <issuer>,<client_id> or <issuer>,<client_id>,<client_secret>")
+				return 1
+			}
+			issuerArg := parts[0]
+			clientIDArg := parts[1]
+
+			if !strings.HasPrefix(issuerArg, "https://") {
+				log.Printf("ERROR Invalid provider issuer value. Expected issuer to start with 'https://' got (%s) \n", issuerArg)
+				return 1
+			}
+
+			if clientIDArg == "" {
+				log.Printf("ERROR Invalid provider client-ID value got (%s) \n", clientIDArg)
+				return 1
+			}
+
+			if strings.HasPrefix(issuerArg, "https://accounts.google.com") {
+				// The Google OP is strange in that it requires a client secret even if this is a public OIDC App.
+				// Despite its name the Google OP client secret is a public value.
+				if len(parts) != 3 {
+					log.Println("ERROR Invalid provider argument format. Expected format for google: <issuer>,<client_id>,<client_secret>")
+					return 1
+				}
+				clientSecretArg := parts[2]
+				if clientSecretArg == "" {
+					log.Printf("ERROR Invalid provider client secret value got (%s) \n", clientSecretArg)
+					return 1
+				}
+
+				opts := providers.GetDefaultGoogleOpOptions()
+				opts.Issuer = issuerArg
+				opts.ClientID = clientIDArg
+				opts.ClientSecret = clientSecretArg
+				opts.GQSign = false
+				provider = providers.NewGoogleOpWithOptions(opts)
+			} else if strings.HasPrefix(issuerArg, "https://login.microsoftonline.com") {
+				opts := providers.GetDefaultAzureOpOptions()
+				opts.Issuer = issuerArg
+				opts.ClientID = clientIDArg
+				opts.GQSign = false
+				provider = providers.NewAzureOpWithOptions(opts)
+			} else if strings.HasPrefix(issuerArg, "https://gitlab.com") {
+				opts := providers.GetDefaultGitlabOpOptions()
+				opts.Issuer = issuerArg
+				opts.ClientID = clientIDArg
+				opts.GQSign = false
+				provider = providers.NewGitlabOpWithOptions(opts)
+			} else {
+				log.Printf("ERROR Unknown issuer supplied: %v \n", issuerArg)
+				return 1
+			}
+		} else if providerFromLdFlags != nil {
+			provider = providerFromLdFlags
 		} else {
 			googleOpOptions := providers.GetDefaultGoogleOpOptions()
 			googleOpOptions.GQSign = false
@@ -215,12 +276,12 @@ func run() int {
 		// script to inject user entries into the policy file
 		//
 		// Example line to add a user:
-		// 		./opkssh add %p %e %i
-		//	%p The desired principal being assumed on the target (aka requested principal).
-		//  %e The email of the user to be added to the policy file.
-		//	%i The desired OpenID Provider for email, e.g. https://accounts.google.com.
+		// 		./opkssh add <Principal> <Email> <Issuer>
+		//	<Principal> The desired principal being assumed on the target (aka requested principal).
+		//  <Email> The email of the user to be added to the policy file.
+		//	<Issuer> The desired OpenID Provider for email, e.g. https://accounts.google.com.
 		if len(os.Args) != 5 {
-			fmt.Println("Invalid number of arguments for add, expected: `<Principal (TOKEN p)> <Email (TOKEN e)> <Issuer (TOKEN i)`")
+			fmt.Println("Invalid number of arguments for add, expected: `<Principal> <Email> <Issuer>`")
 			return 1
 		}
 		inputPrincipal := os.Args[2]
