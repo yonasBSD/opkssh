@@ -158,8 +158,32 @@ func TestRun(t *testing.T) {
 		{
 			name:       "No arguments",
 			args:       []string{"opkssh"},
-			wantOutput: "OPKSSH (OpenPubkey SSH) CLI: command choices are: login, verify, and add",
+			wantOutput: "Missing command",
 			wantExit:   1,
+		},
+		{
+			name:       "Root Help flag",
+			args:       []string{"opkssh", "--help"},
+			wantOutput: "Usage: opkssh <command> [OPTIONS]",
+			wantExit:   0,
+		},
+		{
+			name:       "Add Help flag",
+			args:       []string{"opkssh", "add", "--help"},
+			wantOutput: "Usage: opkssh add <PRINCIPAL> <EMAIL|SUB> <ISSUER>",
+			wantExit:   0,
+		},
+		{
+			name:       "Login Help flag",
+			args:       []string{"opkssh", "login", "--help"},
+			wantOutput: "Usage: opkssh login [OPTIONS]",
+			wantExit:   0,
+		},
+		{
+			name:       "Verify Help flag",
+			args:       []string{"opkssh", "verify", "--help"},
+			wantOutput: "Usage: opkssh verify <PRINCIPAL (TOKEN %u)> <CERT (TOKEN %k)> <KEY_TYPE (TOKEN %t)>",
+			wantExit:   0,
 		},
 		{
 			name:       "Version flag",
@@ -170,7 +194,7 @@ func TestRun(t *testing.T) {
 		{
 			name:       "Unrecognized command",
 			args:       []string{"opkssh", "unknown"},
-			wantOutput: "ERROR! Unrecognized command: unknown",
+			wantOutput: "opkssh: invalid option -- 'unknown'",
 			wantExit:   1,
 		},
 		{
@@ -180,34 +204,45 @@ func TestRun(t *testing.T) {
 			wantExit:   1,
 		},
 		{
+			name:       "Login command with bad arguments",
+			args:       []string{"opkssh", "login", "-badarg"},
+			wantOutput: "flag provided but not defined: -badarg",
+			wantExit:   1,
+		},
+		{
+			name:       "Login command with missing providers arguments",
+			args:       []string{"opkssh", "login", "-provider"},
+			wantOutput: "flag needs an argument: -provider",
+			wantExit:   1,
+		},
+		{
 			name:       "Login command with provider bad provider value",
 			args:       []string{"opkssh", "login", "-provider=badvalue"},
-			wantOutput: "ERROR Invalid provider argument format. Expected format <issuer>,<client_id> or <issuer>,<client_id>,<client_secret>",
+			wantOutput: "Error: Invalid provider argument format. Expected format <issuer>,<client_id> or <issuer>,<client_id>,<client_secret>",
 			wantExit:   1,
 		},
 		{
 			name:       "Login command with provider bad provider issuer value",
 			args:       []string{"opkssh", "login", "-provider=badissuer.com,client_id"},
-			wantOutput: "ERROR Invalid provider issuer value. Expected issuer to start with 'https://' got (badissuer.com)",
+			wantOutput: "Error: Invalid provider issuer value. Expected issuer to start with 'https://' got (badissuer.com)",
 			wantExit:   1,
 		},
-
 		{
 			name:       "Login command with provider bad provider good azure issuer but no client id value",
 			args:       []string{"opkssh", "login", "-provider=https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0,"},
-			wantOutput: "ERROR Invalid provider client-ID value got ()",
+			wantOutput: "Error: Invalid provider client-ID value got ()",
 			wantExit:   1,
 		},
 		{
 			name:       "Login command with provider bad provider good google issuer but no client id value",
 			args:       []string{"opkssh", "login", "-provider=https://accounts.google.com,client_id"},
-			wantOutput: "ERROR Invalid provider argument format. Expected format for google: <issuer>,<client_id>,<client_secret>",
+			wantOutput: "Error: Invalid provider argument format. Expected format for google: <issuer>,<client_id>,<client_secret>",
 			wantExit:   1,
 		},
 		{
 			name:       "Login command with provider bad provider good google issuer but no client secret value",
 			args:       []string{"opkssh", "login", "-provider=https://accounts.google.com,client_id,"},
-			wantOutput: "ERROR Invalid provider client secret value got ()",
+			wantOutput: "Error: Invalid provider client secret value got ()",
 			wantExit:   1,
 		},
 	}
