@@ -88,7 +88,7 @@ ssh root@example.com
 This works because SSH sends the SSH public key opkssh wrote in `~/.ssh/id_ecdsas` to the server and sshd running on the server will send the public key to the opkssh command to verify. This also works for other protocols that build on ssh like [sftp](https://en.wikipedia.org/wiki/SSH_File_Transfer_Protocol) or ssh tunnels.
 
 ```bash
-sftp e0@192.168.1.170
+sftp root@example.com
 ```
 
 ### Installing on a Server
