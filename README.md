@@ -287,6 +287,14 @@ For example if the issuer is `https://authentik.local/application/o/opkssh/` and
 opkssh login --provider=https://authentik.local/application/o/opkssh/,ClientID123
 ```
 
+Currently opkssh supports the following redirect URIs. Make sure to set them at your OpenID Provider:
+
+```
+http://localhost:3000/login-callback
+http://localhost:10001/login-callback
+http://localhost:11110/login-callback
+```
+
 ### Server Configuration
 
 In the `/etc/opk/providers` file, add the OpenID Provider as you would any OpenID Provider. For example:
