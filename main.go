@@ -135,9 +135,8 @@ Arguments:
 `,
 		Example: `  opkssh login
   opkssh login google
-  opkssh login --provider=<issuer>,<client_id>`,
+  opkssh login --provider=<issuer>,<client_id>,<client_secret>,<scopes>`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			sigs := make(chan os.Signal, 1)
@@ -167,7 +166,7 @@ Arguments:
 	loginCmd.Flags().StringVar(&logDirArg, "log-dir", "", "Directory to write output logs")
 	loginCmd.Flags().BoolVar(&disableBrowserOpenArg, "disable-browser-open", false, "Set this flag to disable opening the browser. Useful for choosing the browser you want to use.")
 	loginCmd.Flags().BoolVar(&printIdTokenArg, "print-id-token", false, "Set this flag to print out the contents of the id_token. Useful for inspecting claims.")
-	loginCmd.Flags().StringVar(&providerArg, "provider", "", "OpenID Provider specification in the format: <issuer>,<client_id> or <issuer>,<client_id>,<client_secret>")
+	loginCmd.Flags().StringVar(&providerArg, "provider", "", "OpenID Provider specification in the format: <issuer>,<client_id> or <issuer>,<client_id>,<client_secret> or <issuer>,<client_id>,<client_secret>,<scopes>")
 	loginCmd.Flags().StringVarP(&keyPathArg, "private-key-file", "i", "", "Path where private keys is written.")
 	rootCmd.AddCommand(loginCmd)
 
@@ -252,7 +251,6 @@ Arguments:
 
 			providerPolicyPath := "/etc/opk/providers"
 			providerPolicy, err := policy.NewProviderFileLoader().LoadProviderPolicy(providerPolicyPath)
-
 			if err != nil {
 				log.Println("Failed to open /etc/opk/providers:", err)
 				return err
@@ -309,7 +307,6 @@ func printConfigProblems() {
 // system running the verifier is greater than or equal to 8.1;
 // if not then prints a warning
 func checkOpenSSHVersion() {
-
 	// Redhat/centos does not recognize `sshd -V` but does recognize `ssh -V`
 	// Ubuntu recognizes both
 	cmd := exec.Command("ssh", "-V")
