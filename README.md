@@ -98,6 +98,29 @@ This works because SSH sends the public key written by opkssh in `~/.ssh/id_ecds
 sftp root@example.com
 ```
 
+### Custom key name
+
+<details>
+<summary>Instructions</summary>
+
+#### SSH command
+Tell opkssh to store the name the key-pair `opkssh_server_group1`
+
+```cmd
+opkssh login -i opkssh_server_group1
+```
+
+Tell ssh to use the generated key pair.
+
+```bash
+ssh -o "IdentitiesOnly=yes" -i ~/.ssh/opkssh_server_group1.pub -i ~/.ssh/opkssh_server_group1 root@example.com
+```
+
+We recommend specifying `-o "IdentitiesOnly=yes"` as it tells ssh to only use the provided key. Otherwise ssh will cycle through other keys in `~/.ssh` first and may not get to the specified ones. Servers are configured to only allow 6 attempts by default the config key is `MaxAuthTries 6`.
+
+</details>
+
+
 ### Installing on a Server
 
 To configure a linux server to use opkssh simply run (with root level privileges):
