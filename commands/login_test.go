@@ -30,6 +30,7 @@ import (
 	"github.com/openpubkey/openpubkey/providers"
 	"github.com/openpubkey/openpubkey/util"
 	"github.com/openpubkey/opkssh/commands/config"
+	"github.com/openpubkey/opkssh/sshcert"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
@@ -75,37 +76,148 @@ func Mocks(t *testing.T) (*pktoken.PKToken, crypto.Signer, providers.OpenIdProvi
 }
 
 func TestLoginCmd(t *testing.T) {
-	_, _, mockOp := Mocks(t)
-
 	logDir := "./logs"
 	logPath := filepath.Join(logDir, "opkssh.log")
 
-	mockFs := afero.NewMemMapFs()
-	loginCmd := LoginCmd{
-		Fs:                    mockFs,
-		verbosity:             2,
-		printIdTokenArg:       true,
-		logDirArg:             logDir,
-		disableBrowserOpenArg: true,
-		overrideProvider:      &mockOp,
+	defaultConfig, err := config.NewClientConfig(config.DefaultClientConfig)
+	require.NoError(t, err, "Failed to get default client config")
+
+	_, _, mockOp := Mocks(t)
+	configWithAccessToken := &config.ClientConfig{
+		Providers: []config.ProviderConfig{
+			{
+				AliasList:       []string{"mockOp"},
+				Issuer:          mockOp.Issuer(),
+				SendAccessToken: true,
+			},
+		},
+		DefaultProvider: "mockOp",
 	}
-	require.NotNil(t, loginCmd)
-	err := loginCmd.Run(context.Background())
-	require.NoError(t, err)
 
-	homePath, err := os.UserHomeDir()
-	require.NoError(t, err)
+	tests := []struct {
+		name            string
+		envVars         map[string]string
+		loginCmd        LoginCmd
+		ClientConfig    *config.ClientConfig
+		wantAccessToken bool
+		wantError       bool
+		errorString     string
+	}{
+		{
+			name:    "Good path with no vars",
+			envVars: map[string]string{},
+			loginCmd: LoginCmd{
+				Verbosity:       2,
+				PrintIdTokenArg: true,
+				LogDirArg:       logDir,
+				Config:          defaultConfig,
+			},
+			wantError: false,
+		},
+		{
+			name:    "Good path (load config)",
+			envVars: map[string]string{},
+			loginCmd: LoginCmd{
+				Verbosity:       2,
+				PrintIdTokenArg: true,
+				LogDirArg:       logDir,
+			},
+			wantError: false,
+		},
+		{
+			name:    "Good path with SendAccessToken set in arg and config",
+			envVars: map[string]string{},
+			loginCmd: LoginCmd{
+				Verbosity:          2,
+				LogDirArg:          logDir,
+				Config:             configWithAccessToken,
+				SendAccessTokenArg: true,
+			},
+			wantAccessToken: true,
+			wantError:       false,
+		},
+		{
+			name:    "Good path with SendAccessToken set in config but not in arg",
+			envVars: map[string]string{},
+			loginCmd: LoginCmd{
+				Verbosity:          2,
+				LogDirArg:          logDir,
+				Config:             configWithAccessToken,
+				SendAccessTokenArg: false,
+			},
+			wantAccessToken: true,
+			wantError:       false,
+		},
+		{
+			name:    "Good path with SendAccessToken Arg (issuer not found in config)",
+			envVars: map[string]string{},
+			loginCmd: LoginCmd{
+				Verbosity:          2,
+				LogDirArg:          logDir,
+				Config:             defaultConfig,
+				SendAccessTokenArg: true,
+			},
+			wantAccessToken: true,
+			wantError:       false,
+		},
+	}
 
-	sshPath := filepath.Join(homePath, ".ssh", "id_ecdsa")
-	secKeyBytes, err := afero.ReadFile(mockFs, sshPath)
-	require.NoError(t, err)
-	require.NotNil(t, secKeyBytes)
-	require.Contains(t, string(secKeyBytes), "-----BEGIN OPENSSH PRIVATE KEY-----")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.envVars {
+				err := os.Setenv(k, v)
+				require.NoError(t, err, "Failed to set env var")
+				defer func(key string) {
+					_ = os.Unsetenv(key)
+				}(k)
+			}
 
-	logBytes, err := afero.ReadFile(mockFs, logPath)
-	require.NoError(t, err)
-	require.NotNil(t, logBytes)
-	require.Contains(t, string(logBytes), "running login command with args:")
+			_, _, mockOp := Mocks(t)
+			mockFs := afero.NewMemMapFs()
+
+			tt.loginCmd.overrideProvider = &mockOp
+			tt.loginCmd.Fs = mockFs
+
+			err = tt.loginCmd.Run(context.Background())
+			if tt.wantError {
+				require.Error(t, err, "Expected error but got none")
+				if tt.errorString != "" {
+					require.ErrorContains(t, err, tt.errorString, "Got a wrong error message")
+				}
+			} else {
+				require.NoError(t, err, "Unexpected error")
+
+				homePath, err := os.UserHomeDir()
+				require.NoError(t, err)
+
+				sshPath := filepath.Join(homePath, ".ssh", "id_ecdsa")
+				secKeyBytes, err := afero.ReadFile(mockFs, sshPath)
+				require.NoError(t, err)
+				require.NotNil(t, secKeyBytes)
+				require.Contains(t, string(secKeyBytes), "-----BEGIN OPENSSH PRIVATE KEY-----")
+
+				logBytes, err := afero.ReadFile(mockFs, logPath)
+				require.NoError(t, err)
+				require.NotNil(t, logBytes)
+				require.Contains(t, string(logBytes), "running login command with args:")
+
+				sshPubPath := filepath.Join(homePath, ".ssh", "id_ecdsa.pub")
+				pubKeyBytes, err := afero.ReadFile(mockFs, sshPubPath)
+				require.NoError(t, err)
+
+				certSmug, err := sshcert.NewFromAuthorizedKey("fake-cert-type", string(pubKeyBytes))
+				require.NoError(t, err)
+
+				accToken := certSmug.GetAccessToken()
+
+				if tt.wantAccessToken {
+					require.NotEmpty(t, accToken, "expected access token to be set in SSH cert")
+				} else {
+					require.Empty(t, accToken, "expected access token to not be set in SSH cert")
+				}
+			}
+		})
+	}
 }
 
 func TestDetermineProvider(t *testing.T) {
@@ -194,11 +306,11 @@ func TestDetermineProvider(t *testing.T) {
 			require.NoError(t, err, "Failed to get default client config")
 
 			loginCmd := LoginCmd{
-				disableBrowserOpenArg: true,
-				providerArg:           tt.providerArg,
-				providerAliasArg:      tt.providerAlias,
-				printIdTokenArg:       true,
-				config:                defaultConfig,
+				DisableBrowserOpenArg: true,
+				ProviderArg:           tt.providerArg,
+				ProviderAliasArg:      tt.providerAlias,
+				PrintIdTokenArg:       true,
+				Config:                defaultConfig,
 			}
 
 			provider, chooser, err := loginCmd.determineProvider()
@@ -238,6 +350,7 @@ func TestNewLogin(t *testing.T) {
 	configPathArg := filepath.Join("..", "default-client-config.yml")
 	createConfig := false
 	logDir := "./testdata"
+	sendAccessTokenArg := false
 	disableBrowserOpenArg := true
 	printIdTokenArg := false
 	providerArg := ""
@@ -245,7 +358,7 @@ func TestNewLogin(t *testing.T) {
 	providerAlias := ""
 
 	loginCmd := NewLogin(autoRefresh, configPathArg, createConfig, logDir,
-		disableBrowserOpenArg, printIdTokenArg, providerArg, keyPathArg, providerAlias)
+		sendAccessTokenArg, disableBrowserOpenArg, printIdTokenArg, providerArg, keyPathArg, providerAlias)
 	require.NotNil(t, loginCmd)
 }
 
