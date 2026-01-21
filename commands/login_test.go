@@ -269,14 +269,15 @@ func TestLoginCmd(t *testing.T) {
 
 func TestDetermineProvider(t *testing.T) {
 	tests := []struct {
-		name          string
-		envVars       map[string]string
-		providerArg   string
-		providerAlias string
-		wantIssuer    string
-		wantChooser   string
-		wantError     bool
-		errorString   string
+		name              string
+		envVars           map[string]string
+		providerArg       string
+		providerAlias     string
+		remoteRedirectURI string
+		wantIssuer        string
+		wantChooser       string
+		wantError         bool
+		errorString       string
 	}{
 		{
 			name:          "Good path with env vars",
@@ -310,7 +311,7 @@ func TestDetermineProvider(t *testing.T) {
 			wantIssuer:    "",
 			wantError:     false,
 			errorString:   "",
-			wantChooser:   `[{"ClientSecret":"","Scopes":["openid profile email"],"PromptType":"consent","AccessType":"offline","RedirectURIs":["http://localhost:3000/login-callback","http://localhost:10001/login-callback","http://localhost:11110/login-callback"],"GQSign":false,"OpenBrowser":false,"HttpClient":null,"IssuedAtOffset":60000000000}]`,
+			wantChooser:   `[{"ClientSecret":"","Scopes":["openid profile email"],"PromptType":"consent","AccessType":"offline","RedirectURIs":["http://localhost:3000/login-callback","http://localhost:10001/login-callback","http://localhost:11110/login-callback"],"RemoteRedirectURI":"","GQSign":false,"OpenBrowser":false,"HttpClient":null,"IssuedAtOffset":60000000000,"ExtraURLParamOpts":null}]`,
 		},
 		{
 			name:          "Good path with env vars many providers and no default",
@@ -319,7 +320,7 @@ func TestDetermineProvider(t *testing.T) {
 			providerAlias: "",
 			wantIssuer:    "",
 			wantError:     false,
-			wantChooser:   `[{"ClientSecret":"","Scopes":["openid profile email"],"PromptType":"consent","AccessType":"offline","RedirectURIs":["http://localhost:3000/login-callback","http://localhost:10001/login-callback","http://localhost:11110/login-callback"],"GQSign":false,"OpenBrowser":false,"HttpClient":null,"IssuedAtOffset":60000000000},{"ClientSecret":"","Scopes":["openid profile email"],"PromptType":"consent","AccessType":"offline","RedirectURIs":["http://localhost:3000/login-callback","http://localhost:10001/login-callback","http://localhost:11110/login-callback"],"GQSign":false,"OpenBrowser":false,"HttpClient":null,"IssuedAtOffset":60000000000},{"ClientSecret":"","Scopes":["openid profile email"],"PromptType":"consent","AccessType":"offline","RedirectURIs":["http://localhost:3000/login-callback","http://localhost:10001/login-callback","http://localhost:11110/login-callback"],"GQSign":false,"OpenBrowser":false,"HttpClient":null,"IssuedAtOffset":60000000000}]`,
+			wantChooser:   `[{"ClientSecret":"","Scopes":["openid profile email"],"PromptType":"consent","AccessType":"offline","RedirectURIs":["http://localhost:3000/login-callback","http://localhost:10001/login-callback","http://localhost:11110/login-callback"],"RemoteRedirectURI":"","GQSign":false,"OpenBrowser":false,"HttpClient":null,"IssuedAtOffset":60000000000,"ExtraURLParamOpts":null},{"ClientSecret":"","Scopes":["openid profile email"],"PromptType":"consent","AccessType":"offline","RedirectURIs":["http://localhost:3000/login-callback","http://localhost:10001/login-callback","http://localhost:11110/login-callback"],"RemoteRedirectURI":"","GQSign":false,"OpenBrowser":false,"HttpClient":null,"IssuedAtOffset":60000000000,"ExtraURLParamOpts":null},{"ClientSecret":"","Scopes":["openid profile email"],"PromptType":"consent","AccessType":"offline","RedirectURIs":["http://localhost:3000/login-callback","http://localhost:10001/login-callback","http://localhost:11110/login-callback"],"RemoteRedirectURI":"","GQSign":false,"OpenBrowser":false,"HttpClient":null,"IssuedAtOffset":60000000000,"ExtraURLParamOpts":null}]`,
 		},
 		{
 			name:          "Good path with env vars many providers and providerAlias",
@@ -336,6 +337,24 @@ func TestDetermineProvider(t *testing.T) {
 			providerAlias: "",
 			wantIssuer:    providerIssuer3,
 			wantError:     false,
+		},
+		{
+			name:              "Good path remoteRedirectURI set (no default)",
+			envVars:           map[string]string{"OPKSSH_DEFAULT": "", "OPKSSH_PROVIDERS": allProvidersStr},
+			providerArg:       "",
+			providerAlias:     "",
+			remoteRedirectURI: "https://example.com/login_callback",
+			wantChooser:       `[{"ClientSecret":"","Scopes":["openid profile email"],"PromptType":"consent","AccessType":"offline","RedirectURIs":["http://localhost:3000/login-callback","http://localhost:10001/login-callback","http://localhost:11110/login-callback"],"RemoteRedirectURI":"https://example.com/login_callback","GQSign":false,"OpenBrowser":false,"HttpClient":null,"IssuedAtOffset":60000000000,"ExtraURLParamOpts":null},{"ClientSecret":"","Scopes":["openid profile email"],"PromptType":"consent","AccessType":"offline","RedirectURIs":["http://localhost:3000/login-callback","http://localhost:10001/login-callback","http://localhost:11110/login-callback"],"RemoteRedirectURI":"https://example.com/login_callback","GQSign":false,"OpenBrowser":false,"HttpClient":null,"IssuedAtOffset":60000000000,"ExtraURLParamOpts":null},{"ClientSecret":"","Scopes":["openid profile email"],"PromptType":"consent","AccessType":"offline","RedirectURIs":["http://localhost:3000/login-callback","http://localhost:10001/login-callback","http://localhost:11110/login-callback"],"RemoteRedirectURI":"https://example.com/login_callback","GQSign":false,"OpenBrowser":false,"HttpClient":null,"IssuedAtOffset":60000000000,"ExtraURLParamOpts":null}]`,
+			wantError:         false,
+		},
+		{
+			name:              "Good path remoteRedirectURI set (with default)",
+			envVars:           map[string]string{"OPKSSH_DEFAULT": providerAlias3, "OPKSSH_PROVIDERS": allProvidersStr},
+			providerArg:       "",
+			providerAlias:     "",
+			remoteRedirectURI: "https://example.com/login_callback",
+			wantIssuer:        providerIssuer3,
+			wantError:         false,
 		},
 	}
 
@@ -357,6 +376,7 @@ func TestDetermineProvider(t *testing.T) {
 				ProviderArg:           tt.providerArg,
 				ProviderAliasArg:      tt.providerAlias,
 				PrintIdTokenArg:       true,
+				RemoteRedirectURI:     tt.remoteRedirectURI,
 				Config:                defaultConfig,
 			}
 
@@ -381,12 +401,21 @@ func TestDetermineProvider(t *testing.T) {
 
 				if provider != nil {
 					require.Equal(t, provider.Issuer(), tt.wantIssuer)
+
+					if tt.remoteRedirectURI != "" {
+						// This only covers the case where a single provider is selected.
+						// We handle the chooser case by matching against the expected JSON.
+						unwrappedOp, ok := provider.(*providers.StandardOp)
+						require.True(t, ok, "Expected provider to be of type StandardOp")
+						require.Equal(t, tt.remoteRedirectURI, unwrappedOp.RemoteRedirectURI)
+					}
 				} else {
 					require.NotNil(t, chooser.OpList, "Chooser OpList should not be nil")
 					jsonBytes, err := json.Marshal(chooser.OpList)
 					require.NoError(t, err)
 					require.Equal(t, tt.wantChooser, string(jsonBytes))
 				}
+
 			}
 		})
 	}
@@ -406,9 +435,10 @@ func TestNewLogin(t *testing.T) {
 	providerAlias := ""
 	keyAsOutputArg := false
 	keyTypeArg := ECDSA
+	remoteRedirectURIArg := ""
 
 	loginCmd := NewLogin(autoRefresh, configPathArg, createConfig, configureArg, logDir,
-		sendAccessTokenArg, disableBrowserOpenArg, printIdTokenArg, providerArg, keyAsOutputArg, keyPathArg, providerAlias, keyTypeArg)
+		sendAccessTokenArg, disableBrowserOpenArg, printIdTokenArg, providerArg, keyAsOutputArg, keyPathArg, providerAlias, keyTypeArg, remoteRedirectURIArg)
 	require.NotNil(t, loginCmd)
 }
 
