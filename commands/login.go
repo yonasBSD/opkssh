@@ -93,7 +93,8 @@ type LoginCmd struct {
 	ProviderArg           string // OpenID Provider specification in the format: <issuer>,<client_id> or <issuer>,<client_id>,<client_secret> or <issuer>,<client_id>,<client_secret>,<scopes>
 	ProviderAliasArg      string
 	KeyTypeArg            KeyType
-	PrintKeyArg           bool // Print private key and SSH cert instead of writing them to the filesystem
+	PrintKeyArg           bool // Print the raw private key and SSH cert to stdout instead of writing them to the filesystem
+	InspectCertArg        bool // Display a human-readable inspection of the generated SSH certificate (public information only)
 	SSHConfigured         bool
 	Verbosity             int // Default verbosity is 0, 1 is verbose, 2 is debug
 	RemoteRedirectURI     string
@@ -117,7 +118,7 @@ type LoginCmd struct {
 func NewLogin(autoRefreshArg bool, configPathArg string, createConfigArg bool, configureArg bool, logDirArg string,
 	sendAccessTokenArg bool, disableBrowserOpenArg bool, printIdTokenArg bool,
 	providerArg string, printKeyArg bool, keyPathArg string, providerAliasArg string, keyTypeArg KeyType,
-	remoteRedirectUri string,
+	remoteRedirectUri string, inspectCertArg bool,
 ) *LoginCmd {
 	return &LoginCmd{
 		Fs:                    afero.NewOsFs(),
@@ -132,6 +133,7 @@ func NewLogin(autoRefreshArg bool, configPathArg string, createConfigArg bool, c
 		KeyPathArg:            keyPathArg,
 		ProviderArg:           providerArg,
 		PrintKeyArg:           printKeyArg,
+		InspectCertArg:        inspectCertArg,
 		ProviderAliasArg:      providerAliasArg,
 		KeyTypeArg:            keyTypeArg,
 		RemoteRedirectURI:     remoteRedirectUri,
@@ -511,7 +513,14 @@ func (l *LoginCmd) login(ctx context.Context, provider providers.OpenIdProvider,
 			return nil, fmt.Errorf("failed to format ID Token: %w", err)
 		}
 
-		fmt.Printf("id_token:\n%s\n", idTokenStr)
+		fmt.Fprintf(l.out(), "id_token:\n%s\n", idTokenStr)
+	}
+
+	if l.InspectCertArg {
+		inspect := NewInspectCmd(string(certBytes), l.out())
+		if err := inspect.Run(); err != nil {
+			return nil, fmt.Errorf("failed to inspect SSH cert: %w", err)
+		}
 	}
 
 	idStr, err := IdentityString(*pkt)
@@ -865,7 +874,7 @@ func PrettyIdToken(pkt pktoken.PKToken) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	idtJson, err := json.MarshalIndent(idt.GetClaims(), "", "    ")
+	idtJson, err := json.MarshalIndent(idt.GetClaims(), "", "  ")
 	if err != nil {
 		return "", err
 	}
